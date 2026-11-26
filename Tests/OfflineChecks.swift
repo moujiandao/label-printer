@@ -108,7 +108,7 @@ struct OfflineChecks {
         for phase in [PrinterConnection.Phase.idle, .offline] {
             try require(phase.shouldAttemptConnection(hasConnectedEndpoint: false), "A session can connect when idle or offline")
         }
-        for phase in [PrinterConnection.Phase.starting, .searching, .connecting, .discovering] {
+        for phase in [PrinterConnection.Phase.starting, .searching, .connecting, .discovering, .reconnecting] {
             try require(!phase.shouldAttemptConnection(hasConnectedEndpoint: false), "A session keeps the current connection attempt")
         }
         try require(

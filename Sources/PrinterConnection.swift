@@ -6,7 +6,7 @@ import Foundation
 final class PrinterConnection: NSObject, ObservableObject {
     enum Phase: Equatable {
         case idle, starting, searching, choosing, connecting, discovering, setupReady, ready, offline
-        case bluetoothOff, denied, incompatible
+        case reconnecting, bluetoothOff, denied, incompatible
 
         var title: String {
             switch self {
@@ -15,6 +15,7 @@ final class PrinterConnection: NSObject, ObservableObject {
             case .searching: "Looking for printer"
             case .choosing: "Select a Bluetooth printer"
             case .connecting, .discovering: "Connecting to printer"
+            case .reconnecting: "Reconnecting to printer"
             case .setupReady: "Select a print endpoint"
             case .ready: "Printer connected"
             case .offline: "Printer out of reach"
@@ -25,7 +26,7 @@ final class PrinterConnection: NSObject, ObservableObject {
         }
 
         var isConnecting: Bool {
-            self == .starting || self == .searching || self == .connecting || self == .discovering
+            self == .starting || self == .searching || self == .connecting || self == .discovering || self == .reconnecting
         }
 
         func shouldAttemptConnection(hasConnectedEndpoint: Bool) -> Bool {
@@ -77,6 +78,10 @@ final class PrinterConnection: NSObject, ObservableObject {
         super.init()
     }
 
+    var canReconnect: Bool {
+        profile != nil && !isSettingUp && transfer == nil && !phase.isConnecting
+    }
+
     func connectIfNeeded() {
         guard profile != nil, !isSettingUp, transfer == nil,
               phase.shouldAttemptConnection(hasConnectedEndpoint: target?.state == .connected && endpoint != nil)
@@ -85,8 +90,25 @@ final class PrinterConnection: NSObject, ObservableObject {
         startBluetooth()
     }
 
+    func reconnect() {
+        guard canReconnect else { return }
+        printMessage = nil
+        printFailed = false
+        guard phase == .ready, let central, let target, target.state != .disconnected else {
+            connectIfNeeded()
+            return
+        }
+        // Wait for the old link to close before rediscovering the saved write endpoint.
+        phase = .reconnecting
+        later(seconds: 5) { printer in
+            guard printer.phase == .reconnecting else { return }
+            printer.retryAfterDisconnect()
+        }
+        central.cancelPeripheralConnection(target)
+    }
+
     func beginSetup() {
-        guard transfer == nil else { return }
+        guard transfer == nil, phase != .reconnecting else { return }
         isSettingUp = true
         scanForSetup()
     }
@@ -390,6 +412,11 @@ extension PrinterConnection: @preconcurrency CBCentralManagerDelegate {
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         guard peripheral === target, peripheral.state == .disconnected else { return }
+        if phase == .reconnecting {
+            disconnect()
+            startBluetooth()
+            return
+        }
         if transfer != nil { finishPrint(error: "Printer disconnected. Check the label before printing again.") }
         retryAfterDisconnect()
     }
@@ -397,7 +424,7 @@ extension PrinterConnection: @preconcurrency CBCentralManagerDelegate {
 
 extension PrinterConnection: @preconcurrency CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didModifyServices invalidatedServices: [CBService]) {
-        guard peripheral === target else { return }
+        guard peripheral === target, phase != .reconnecting else { return }
         let invalidated = invalidatedServices.contains { $0.uuid.uuidString == profile?.endpoint.service }
         guard isSettingUp || invalidated else { return }
         if transfer != nil {

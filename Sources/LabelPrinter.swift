@@ -236,15 +236,13 @@ struct LabelPrinterView: View {
                     Text(profile.name).font(.subheadline.weight(.medium))
                     Text("\(profile.language.rawValue) · \(profile.resolution.title)")
                         .font(.caption).foregroundStyle(.secondary)
-                }
-                if printer.profile != nil && printer.phase != .ready {
-                    Button(printer.phase.isConnecting ? "Connecting…" : "Connect Printer", action: printer.connectIfNeeded)
-                        .disabled(printer.phase.isConnecting)
+                    Button("Reconnect Printer", systemImage: "arrow.clockwise", action: printer.reconnect)
+                        .disabled(!printer.canReconnect)
                 }
                 Button(printer.profile == nil ? "Add Bluetooth Printer…" : "Change Bluetooth Printer…") {
                     showingPrinterSetup = true
                 }
-                .disabled(printer.progress != nil)
+                .disabled(printer.progress != nil || printer.phase == .reconnecting)
                 if let description = connectionDescription {
                     Text(description)
                         .font(.caption)

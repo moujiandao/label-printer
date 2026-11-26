@@ -2,6 +2,10 @@
 
 ## [2026-11-26]
 
+### Added
+
+- Add a Reconnect Printer button for the saved Bluetooth printer.
+
 ### Changed
 
 - Retry the saved Bluetooth printer when opening or returning to Label Printer and when the Mac wakes.

@@ -19,6 +19,8 @@ The [ZIP download](https://github.com/moujiandao/label-printer/releases/latest/d
 
 Direct Bluetooth requires a printer that accepts TSPL or ZPL through a writable Bluetooth LE characteristic. TSPL jobs use gap-sensed stock with a 2 mm gap. Turn on Bluetooth on your Mac, power on the printer nearby, and allow access when macOS asks. If your model uses a proprietary protocol or Bluetooth Classic, check whether its vendor offers a macOS driver and use **System Print…** if the printer appears there.
 
+If your saved device is missing from the Bluetooth scan, choose **Use Saved Printer** to retry it directly. **Reconnect Printer** in the sidebar refreshes the Bluetooth connection and keeps your label preview.
+
 ### Connect a Wi-Fi printer
 
 1. Use the printer’s setup menu or manufacturer’s app to join your Wi-Fi network.

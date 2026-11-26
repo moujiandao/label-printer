@@ -16,7 +16,10 @@ struct PrinterSetupView: View {
                 discovery
             }
             HStack {
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(printer.profile == nil ? "Cancel" : "Use Saved Printer") {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
                 Spacer()
                 if printer.phase == .setupReady {
                     Button("Choose Another Device", action: printer.scanForSetup)
