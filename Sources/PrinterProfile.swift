@@ -41,6 +41,14 @@ struct PrinterProfile: Codable, Equatable {
     private static let storageKey = "bluetoothPrinterProfile"
     private static let legacyKey = "connectedPL70eIdentifier"
 
+    var usesNelkoBitmapCompression: Bool {
+        language == .tspl && endpoint == .nelko && Self.isNelkoModel(name)
+    }
+
+    static func isNelkoModel(_ name: String) -> Bool {
+        name.localizedCaseInsensitiveContains("PL70e-BT")
+    }
+
     static func load(from defaults: UserDefaults) -> Self? {
         if let saved = defaults.data(forKey: storageKey) {
             return try? JSONDecoder().decode(Self.self, from: saved)

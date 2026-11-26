@@ -1,6 +1,7 @@
 import AppKit
 import ImageIO
 import UniformTypeIdentifiers
+import zlib
 
 enum LabelFraming: String, CaseIterable, Identifiable {
     case fill = "Crop to fill"
@@ -10,13 +11,14 @@ enum LabelFraming: String, CaseIterable, Identifiable {
 }
 
 enum LabelImageError: LocalizedError {
-    case unreadable, tooLarge, renderFailed
+    case unreadable, tooLarge, renderFailed, printEncodingFailed
 
     var errorDescription: String? {
         switch self {
         case .unreadable: "That item does not contain a supported image."
         case .tooLarge: "Choose an image smaller than 50 MB."
         case .renderFailed: "The label image could not be rendered."
+        case .printEncodingFailed: "The label could not be encoded for Bluetooth printing."
         }
     }
 }
@@ -147,17 +149,38 @@ struct LabelRaster {
     let rowBytes: Int
     let resolution: PrinterResolution
 
-    func printJob(language: PrinterLanguage = .tspl) -> Data {
-        if language == .zpl { return zplJob() }
+    func printJob(for profile: PrinterProfile) throws -> Data {
+        if profile.language == .zpl { return zplJob() }
+        let payload: Data
+        let bitmapMode: String
+        if profile.usesNelkoBitmapCompression {
+            payload = try nelkoCompressedBitmap()
+            bitmapMode = "3,\(payload.count)"
+        } else {
+            payload = bitmap
+            bitmapMode = "0"
+        }
         let commands = [
             "SIZE 100 mm,150 mm", "GAP 2 mm,0 mm", "DIRECTION 0,0",
             "SPEED 4", "DENSITY 6", "CLS",
-            "BITMAP 0,0,\(rowBytes),\(preview.height),0,"
+            "BITMAP 0,0,\(rowBytes),\(preview.height),\(bitmapMode),"
         ].joined(separator: "\r\n")
         var job = Data(commands.utf8)
-        job.append(bitmap)
+        job.append(payload)
         job.append(contentsOf: "\r\nPRINT 1,1\r\n".utf8)
         return job
+    }
+
+    private func nelkoCompressedBitmap() throws -> Data {
+        // The vendor's TSPL mode 3 sends zlib data with one bits for ink.
+        let pixels = bitmap.map { ~$0 }
+        let sourceLength = uLong(pixels.count)
+        var compressedLength = compressBound(sourceLength)
+        var compressed = [UInt8](repeating: 0, count: Int(compressedLength))
+        guard compress(&compressed, &compressedLength, pixels, sourceLength) == Z_OK else {
+            throw LabelImageError.printEncodingFailed
+        }
+        return Data(compressed.prefix(Int(compressedLength)))
     }
 
     private func zplJob() -> Data {

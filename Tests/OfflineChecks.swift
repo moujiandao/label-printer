@@ -1,5 +1,6 @@
 import AppKit
 import UniformTypeIdentifiers
+import zlib
 
 @main
 struct OfflineChecks {
@@ -28,13 +29,18 @@ struct OfflineChecks {
 
         let header = "SIZE 100 mm,150 mm\r\nGAP 2 mm,0 mm\r\nDIRECTION 0,0\r\nSPEED 4\r\nDENSITY 6\r\nCLS\r\nBITMAP 0,0,100,1200,0,"
         let trailer = "\r\nPRINT 1,1\r\n"
-        let job = original.printJob()
+        let genericTSPL = PrinterProfile(
+            identifier: UUID(), name: "Synthetic printer", endpoint: .nelko,
+            language: .tspl, resolution: .standard
+        )
+        let job = try original.printJob(for: genericTSPL)
         try require(job.starts(with: header.utf8), "Print job declares correct physical size and bytes per row")
         try require(job.suffix(trailer.utf8.count) == Data(trailer.utf8), "Print job requests exactly one copy")
         try require(
             Data(job.dropFirst(header.utf8.count).dropLast(trailer.utf8.count)) == original.bitmap,
             "Print payload embeds all bitmap bytes unchanged"
         )
+        try verifyNelko(original, trailer: trailer)
 
         let fit = LabelImage.imageRect(size: CGSize(width: 1600, height: 1200), framing: .fit, position: 0.5)
         let fillLeft = LabelImage.imageRect(size: CGSize(width: 1600, height: 1200), framing: .fill, position: 0)
@@ -94,7 +100,7 @@ struct OfflineChecks {
         try require(editor.acceptDrop([brokenProvider]), "Replacement drop opens the import path")
         try await waitForImport(editor)
         try require(editor.errorMessage != nil && editor.raster == nil, "Failed replacement clears the old printable label")
-        print("Offline image, clipboard, drop, crop, PNG, TSPL, ZPL and printer preference checks passed.")
+        print("Offline image, clipboard, drop, crop, PNG, TSPL, Nelko Bluetooth, ZPL and printer preference checks passed.")
     }
 
     @MainActor
@@ -118,8 +124,42 @@ struct OfflineChecks {
         return image
     }
 
+    static func verifyNelko(_ label: LabelRaster, trailer: String) throws {
+        let domain = "LabelPrinter.Tests." + UUID().uuidString
+        guard let defaults = UserDefaults(suiteName: domain) else {
+            throw CheckFailed(message: "Could not open isolated test preferences")
+        }
+        defer { defaults.removePersistentDomain(forName: domain) }
+        defaults.set(UUID().uuidString, forKey: "connectedPL70eIdentifier")
+        guard let profile = PrinterProfile.load(from: defaults) else {
+            throw CheckFailed(message: "Could not load the existing Nelko profile")
+        }
+        let job = try label.printJob(for: profile)
+        let header = "SIZE 100 mm,150 mm\r\nGAP 2 mm,0 mm\r\nDIRECTION 0,0\r\nSPEED 4\r\nDENSITY 6\r\nCLS\r\nBITMAP 0,0,100,1200,3,"
+        try require(job.starts(with: header.utf8), "Nelko Bluetooth uses bitmap mode 3 at 4 × 6")
+        let body = job.dropFirst(header.utf8.count)
+        guard let separator = body.firstIndex(of: 44),
+              let encodedLength = Int(String(decoding: body[..<separator], as: UTF8.self)),
+              encodedLength > 0 else {
+            throw CheckFailed(message: "Nelko bitmap is missing its compressed byte count")
+        }
+        let payload = body.dropFirst(separator - body.startIndex + 1)
+        try require(payload.dropFirst(encodedLength).elementsEqual(trailer.utf8), "Compressed byte count ends at the single-copy command")
+        let compressed = Array(payload.prefix(encodedLength))
+        var decoded = [UInt8](repeating: 0, count: label.bitmap.count)
+        var decodedLength = uLongf(decoded.count)
+        let result = uncompress(&decoded, &decodedLength, compressed, uLong(compressed.count))
+        try require(result == Z_OK && decodedLength == label.bitmap.count, "Nelko payload is a complete zlib bitmap")
+        try require(decoded.elementsEqual(label.bitmap.lazy.map { ~$0 }), "Nelko compressed pixels use one for ink and zero for white")
+        print("Nelko Bluetooth synthetic bitmap: \(label.bitmap.count) raw bytes, \(encodedLength) compressed bytes.")
+    }
+
     static func verifyZPL(_ label: LabelRaster) throws {
-        var job = label.printJob(language: .zpl)[...]
+        let profile = PrinterProfile(
+            identifier: UUID(), name: "PL70e-BT_TEST-LE", endpoint: .nelko,
+            language: .zpl, resolution: label.resolution
+        )
+        var job = try label.printJob(for: profile)[...]
         let header = "^XA^PON^LH0,0^PW\(label.preview.width)^LL\(label.preview.height)"
         try require(job.starts(with: header.utf8), "ZPL declares the intended raster dimensions")
         job = job.dropFirst(header.utf8.count)
