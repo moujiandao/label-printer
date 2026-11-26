@@ -8,8 +8,8 @@
     <key>CFBundleName</key><string>Label Printer</string>
     <key>CFBundleIconFile</key><string>AppIcon.icns</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>1.1</string>
-    <key>CFBundleVersion</key><string>2</string>
+    <key>CFBundleShortVersionString</key><string>1.1.1</string>
+    <key>CFBundleVersion</key><string>3</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSBluetoothAlwaysUsageDescription</key>
     <string>Label Printer uses Bluetooth to find and connect to the label printer you choose.</string>

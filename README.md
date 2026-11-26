@@ -47,7 +47,7 @@ Run `bash test.sh` for offline tests.
 
 ### Build the installer
 
-After building the app, run `bash package.sh`. It creates `build/Label-Printer-macOS.dmg` with the app and an Applications shortcut. Attach the disk image to the GitHub release. To package an existing app bundle, pass its path as the first argument.
+Build the app from the commit you plan to release, then run `bash package.sh`. It creates `build/Label-Printer-macOS.dmg` with the app and an Applications shortcut. Mount the disk image and check the version and Finder icon of the app inside it before uploading it to GitHub. To package an existing app bundle, pass its path as the first argument.
 
 The source build uses local signing. For a notarized public download, use a Developer ID-signed app and follow [Apple’s distribution guidance](https://developer.apple.com/documentation/xcode/packaging-mac-software-for-distribution).
 
