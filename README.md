@@ -1,6 +1,8 @@
 # Label Printer
 
-Paste or drop an image, preview it on a 4 × 6 label, and print from your Mac. Label Printer uses 100 × 150 mm stock and supports macOS 14 or later on Apple silicon and Intel.
+Paste a label image from your clipboard with **⌘V**, or drag and drop an image or PDF. Preview and print on **4 × 6** stock, with one label per PDF page.
+
+Label Printer uses 100 × 150 mm stock and supports macOS 14 or later on Apple silicon and Intel.
 
 ## Install
 
@@ -8,7 +10,17 @@ Paste or drop an image, preview it on a 4 × 6 label, and print from your Mac. L
 2. Drag **Label Printer** onto the **Applications** shortcut in the window.
 3. Open **Label Printer** from Applications. To pin it to the Dock, Control-click its Dock icon and choose **Options → Keep in Dock**.
 
-The [ZIP download](https://github.com/moujiandao/label-printer/releases/latest/download/Label-Printer-macOS.zip) is also available. If macOS blocks the locally signed download, use the source build below.
+To update, quit Label Printer before dragging in the new copy, then choose **Replace** if Finder asks. The [ZIP download](https://github.com/moujiandao/label-printer/releases/latest/download/Label-Printer-macOS.zip) is also available.
+
+### If macOS can’t verify Label Printer
+
+The GitHub builds use ad hoc signing and have no Apple notarization, so macOS may block the first launch. If you downloaded the app from this project and verified it against the release’s SHA-256 checksum, you can approve this copy. [Label Printer releases](https://github.com/moujiandao/label-printer/releases/latest)
+
+1. Try opening **Label Printer** from **Applications** and dismiss the alert.
+2. Open **System Settings → Privacy & Security** and scroll down to **Security**.
+3. Click **Open Anyway** for Label Printer, then confirm **Open**. Authenticate if prompted.
+
+If **Open Anyway** is unavailable, see [Build from source](#build-from-source). [Apple Support’s opening instructions](https://support.apple.com/en-us/102445)
 
 ## Choose your printer
 
@@ -55,6 +67,6 @@ The source build uses local signing. For a notarized public download, use a Deve
 
 ## Privacy and license
 
-Label Printer has no accounts, analytics, or uploads. It uses the clipboard when you paste and stores the selected printer settings locally. Images are passed to the printer after you choose a print action.
+Label Printer has no accounts, analytics, or uploads. It uses the clipboard when you paste, opens image and PDF files locally, and keeps the selected printer settings on your Mac. It sends label content to the selected printer when you print.
 
 Label Printer is open source under the [MIT License](LICENSE). Contributions are welcome. For a printer compatibility report, include the model, connection method, macOS version, and any steps to reproduce using a synthetic label. Label Printer is an independent project. Printer names identify compatibility presets and do not imply vendor endorsement.
