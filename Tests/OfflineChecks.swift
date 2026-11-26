@@ -101,7 +101,107 @@ struct OfflineChecks {
         try require(editor.acceptDrop([brokenProvider]), "Replacement drop opens the import path")
         try await waitForImport(editor)
         try require(editor.errorMessage != nil && editor.raster == nil, "Failed replacement clears the old printable label")
-        print("Offline image, clipboard, drop, crop, PNG, TSPL, Nelko Bluetooth, ZPL and printer preference checks passed.")
+        try await verifyPDFLabels(in: directory, imageFile: file)
+        print("Offline image, clipboard, drop, crop, PNG, PDF, system pagination, TSPL, Nelko Bluetooth, ZPL and printer preference checks passed.")
+    }
+
+    @MainActor
+    static func verifyPDFLabels(in directory: URL, imageFile: URL) async throws {
+        let file = directory.appendingPathComponent("Synthetic labels.pdf")
+        let pageSize = CGSize(width: 288, height: 432)
+        let upperLeft = CGRect(x: 24, y: 375, width: 48, height: 30)
+        let lowerRight = CGRect(x: 216, y: 24, width: 48, height: 30)
+        try makePDF(at: file, pageSize: pageSize, markers: [upperLeft, lowerRight])
+
+        let editor = LabelEditor()
+        editor.load(file: file)
+        try require(editor.isPDF && editor.pageCount == 2 && editor.pageIndex == 0, "Opening a PDF loads all of its pages in order")
+        guard let first = editor.raster else { throw CheckFailed(message: "The first PDF page has no preview") }
+        editor.selectPage(1)
+        guard let second = editor.raster, let job = editor.printJob else {
+            throw CheckFailed(message: "The second PDF page or the print job is missing")
+        }
+        try require(editor.pageIndex == 1 && first.bitmap != second.bitmap, "The preview can switch between PDF pages")
+        try require(job.pageCount == 2, "Printing includes all pages even when page two is selected")
+        let jobFirst = try job.raster(page: 0)
+        let jobSecond = try job.raster(page: 1)
+        try require(jobFirst.bitmap == first.bitmap && jobSecond.bitmap == second.bitmap, "Bluetooth consumes the same label pixels shown in the preview in document order")
+        try verifyPDFMarkers(first: jobFirst, second: jobSecond, stage: "Preview and Bluetooth")
+        editor.selectPage(2)
+        try require(editor.pageIndex == 1, "Page navigation stays within the PDF")
+        editor.resolution = .high
+        try require(editor.raster?.preview.width == 1200 && editor.printJob?.resolution == .high,
+                    "PDF preview and the print job use the selected printer resolution")
+
+        let data = try Data(contentsOf: file)
+        let preview = try Data(contentsOf: imageFile)
+        let provider = NSItemProvider()
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.png.identifier, visibility: .all) { callback in
+            callback(preview, nil)
+            return nil
+        }
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.pdf.identifier, visibility: .all) { callback in
+            callback(data, nil)
+            return nil
+        }
+        try require(editor.acceptDrop([provider]), "A drop offering a PDF and its PNG preview is accepted")
+        try await waitForImport(editor)
+        try require(editor.isPDF && editor.pageCount == 2 && editor.pageIndex == 0, "A dropped PDF retains all its pages when it also offers a PNG preview")
+
+        let saved = directory.appendingPathComponent("System print output.pdf")
+        let printInfo = NSPrintInfo(dictionary: [.jobSavingURL: saved])
+        printInfo.jobDisposition = .save
+        let operation = SystemPrinting.makeOperation(for: job, info: printInfo)
+        operation.showsPrintPanel = false
+        operation.showsProgressPanel = false
+        try require(operation.printInfo.jobDisposition == .save, "System printing test is set to save a PDF locally")
+        try require(operation.run(), "System Print saves the print job offline")
+        guard let printed = CGPDFDocument(saved as CFURL) else { throw CheckFailed(message: "System Print did not save a readable PDF") }
+        try require(printed.numberOfPages == 2, "System Print emits one print page for each PDF page")
+        for index in 1...2 {
+            guard let page = printed.page(at: index) else { throw CheckFailed(message: "System Print omitted a page") }
+            let size = page.getBoxRect(.mediaBox).size
+            try require(abs(size.width - 100 * 72 / 25.4) < 0.5 && abs(size.height - 150 * 72 / 25.4) < 0.5,
+                        "System Print uses the app's 100 × 150 mm paper size")
+        }
+        let savedPDF = try LabelPDF(data: Data(contentsOf: saved))
+        let savedFirst = try savedPDF.raster(page: 0, resolution: .standard)
+        let savedSecond = try savedPDF.raster(page: 1, resolution: .standard)
+        try verifyPDFMarkers(first: savedFirst, second: savedSecond, stage: "System Print")
+
+        let single = directory.appendingPathComponent("Single label.pdf")
+        try makePDF(at: single, pageSize: CGSize(width: 432, height: 288), markers: [CGRect(x: 64, y: 80, width: 36, height: 40)])
+        editor.load(file: single)
+        try require(editor.isPDF && editor.pageCount == 1 && editor.raster?.bitmap.contains(where: { $0 != 0xFF }) == true,
+                    "A single landscape 4 × 6 PDF renders as one portrait label")
+        editor.load(file: imageFile)
+        try require(!editor.isPDF && editor.pageIndex == 0 && editor.printJob?.pageCount == 1, "An image still prints as one label after a PDF")
+        let invalid = directory.appendingPathComponent("Broken labels.pdf")
+        try Data("This file is not a PDF".utf8).write(to: invalid)
+        editor.load(file: invalid)
+        try require(editor.printJob == nil && editor.errorMessage?.contains("PDF") == true, "An unreadable PDF cannot leave the previous label printable")
+    }
+
+    static func makePDF(at url: URL, pageSize: CGSize, markers: [CGRect]) throws {
+        var mediaBox = CGRect(origin: .zero, size: pageSize)
+        guard let context = CGContext(url as CFURL, mediaBox: &mediaBox, nil) else {
+            throw CheckFailed(message: "Could not create a synthetic PDF")
+        }
+        for marker in markers {
+            context.beginPDFPage(nil)
+            context.setFillColor(gray: 0, alpha: 1)
+            context.fill(marker)
+            context.endPDFPage()
+        }
+        context.closePDF()
+    }
+
+    static func verifyPDFMarkers(first: LabelRaster, second: LabelRaster, stage: String) throws {
+        let topLeft = 100 * first.rowBytes + 12
+        let bottomRight = 1080 * first.rowBytes + 87
+        try require(first.bitmap[topLeft] == 0x00 && first.bitmap[bottomRight] == 0xFF &&
+                    second.bitmap[topLeft] == 0xFF && second.bitmap[bottomRight] == 0x00,
+                    "\(stage) preserves distinct PDF page marks, orientation and order. Pixels: \([first.bitmap[topLeft], first.bitmap[bottomRight], second.bitmap[topLeft], second.bitmap[bottomRight]])")
     }
 
     static func verifyReconnectEligibility() throws {

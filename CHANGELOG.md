@@ -4,6 +4,7 @@
 
 ### Added
 
+- Open and preview 4 × 6 PDFs, and print each PDF page as a separate label.
 - Add a Reconnect Printer button for the saved Bluetooth printer.
 
 ### Changed

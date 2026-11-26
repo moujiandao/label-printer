@@ -29,7 +29,7 @@ struct LabelPrinterApp: App {
         .defaultSize(width: 860, height: 650)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("Open Image…", action: editor.chooseFile)
+                Button("Open Image or PDF…", action: editor.chooseFile)
                     .keyboardShortcut("o", modifiers: .command)
                 Button("Save PNG…", action: editor.savePNG)
                     .keyboardShortcut("s", modifiers: .command)
@@ -147,7 +147,28 @@ struct LabelPrinterView: View {
 
     private var preview: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Print preview").font(.headline)
+            HStack {
+                Text("Print preview").font(.headline)
+                Spacer()
+                if editor.pageCount > 1 {
+                    Button {
+                        editor.selectPage(editor.pageIndex - 1)
+                    } label: {
+                        Image(systemName: "chevron.left")
+                    }
+                    .accessibilityLabel("Previous page")
+                    .disabled(editor.pageIndex == 0 || editor.isImporting)
+                    Text("Page \(editor.pageIndex + 1) of \(editor.pageCount)")
+                        .font(.subheadline.monospacedDigit())
+                    Button {
+                        editor.selectPage(editor.pageIndex + 1)
+                    } label: {
+                        Image(systemName: "chevron.right")
+                    }
+                    .accessibilityLabel("Next page")
+                    .disabled(editor.pageIndex == editor.pageCount - 1 || editor.isImporting)
+                }
+            }
             ZStack {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(isDropTarget ? accent.opacity(0.15) : canvas)
@@ -157,7 +178,7 @@ struct LabelPrinterView: View {
                         style: StrokeStyle(lineWidth: isDropTarget ? 2 : 1, dash: editor.raster == nil ? [6, 4] : [])
                     )
                 if let raster = editor.raster {
-                    Image(raster.preview, scale: 1, label: Text("Cropped black and white 4 by 6 label"))
+                    Image(raster.preview, scale: 1, label: Text("Black and white 4 by 6 label preview"))
                         .resizable()
                         .interpolation(.high)
                         .scaledToFit()
@@ -169,8 +190,8 @@ struct LabelPrinterView: View {
                             .font(.system(size: 32, weight: .light))
                             .foregroundStyle(accent)
                             .accessibilityHidden(true)
-                        Text("Drop a label image here").font(.title3.weight(.semibold))
-                        Text("Or paste with ⌘V or Ctrl+V").foregroundStyle(.secondary)
+                        Text("Drop a label image or PDF here").font(.title3.weight(.semibold))
+                        Text("Or paste an image with ⌘V or Ctrl+V").foregroundStyle(.secondary)
                         Button("Paste Image", action: editor.paste)
                             .controlSize(.large)
                             .padding(.top, 4)
@@ -178,20 +199,20 @@ struct LabelPrinterView: View {
                     .padding(18)
                 }
                 if editor.isImporting {
-                    ProgressView("Loading image…")
+                    ProgressView("Loading label…")
                         .padding(16)
                         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .onDrop(of: [.fileURL, .image], isTargeted: $isDropTarget, perform: editor.acceptDrop)
+            .onDrop(of: [.fileURL, .image, .pdf], isTargeted: $isDropTarget, perform: editor.acceptDrop)
             if let error = editor.errorMessage {
                 Label(error, systemImage: "exclamationmark.circle")
                     .font(.callout).foregroundStyle(.red)
             } else if let info = editor.infoMessage {
                 Text(info).font(.callout).foregroundStyle(.secondary)
             } else {
-                Text(editor.raster == nil ? "Images stay on this Mac." : "Drop or paste another image to replace this label.")
+                Text(editor.raster == nil ? "Files stay on this Mac." : "Drop an image or PDF to replace this label.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -201,34 +222,16 @@ struct LabelPrinterView: View {
     private var tools: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Image").font(.headline)
+                Text("Label").font(.headline)
                 HStack(spacing: 8) {
                     Button("Paste Image", systemImage: "clipboard", action: editor.paste)
                     Button("Open…", systemImage: "folder", action: editor.chooseFile)
                 }
             }
-            Divider()
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Framing").font(.headline)
-                Picker("Framing", selection: $editor.framing) {
-                    ForEach(LabelFraming.allCases) { mode in
-                        Text(mode.rawValue).tag(mode)
-                    }
-                }.labelsHidden()
-                if editor.canAdjustCrop {
-                    Slider(value: $editor.position, in: 0...1) { Text("Crop position") }
-                        .accessibilityLabel("Crop position")
-                    Text("Use Fit entire image if the crop cuts off text or barcodes.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                HStack(spacing: 8) {
-                    Button("Rotate", systemImage: "rotate.right", action: editor.rotate)
-                    Button("Reset", action: editor.resetCrop)
-                }
+            if !editor.isPDF {
+                Divider()
+                imageFraming
             }
-            .disabled(editor.image == nil || editor.isImporting)
             Divider()
             VStack(alignment: .leading, spacing: 8) {
                 Text("Printer").font(.headline)
@@ -252,7 +255,7 @@ struct LabelPrinterView: View {
             }
             Spacer(minLength: 5)
             if let progress = printer.progress {
-                ProgressView("Sending label…", value: progress)
+                ProgressView(printer.printProgressTitle, value: progress)
             } else if let message = printer.printMessage {
                 Text(message)
                     .font(.callout)
@@ -260,16 +263,16 @@ struct LabelPrinterView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Button {
-                if let raster = editor.raster { printer.printLabel(raster) }
+                if let job = editor.printJob { printer.printLabels(job) }
             } label: {
-                Label("Print Label", systemImage: "printer")
+                Label(editor.pageCount > 1 ? "Print \(editor.pageCount) Labels" : "Print Label", systemImage: "printer")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .disabled(editor.raster == nil || editor.isImporting || printer.phase != .ready || printer.progress != nil)
             Button("System Print…", systemImage: "printer") {
-                if let raster = editor.raster { SystemPrinting.openPrintDialog(for: raster) }
+                if let job = editor.printJob { SystemPrinting.openPrintDialog(for: job) }
             }
             .disabled(editor.raster == nil || editor.isImporting || printer.progress != nil)
             Button("Save PNG…", systemImage: "square.and.arrow.down", action: editor.savePNG)
@@ -280,6 +283,30 @@ struct LabelPrinterView: View {
         .frame(maxHeight: .infinity, alignment: .topLeading)
         .background(canvas, in: RoundedRectangle(cornerRadius: 12))
         .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(border, lineWidth: 1) }
+    }
+
+    private var imageFraming: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Framing").font(.headline)
+            Picker("Framing", selection: $editor.framing) {
+                ForEach(LabelFraming.allCases) { mode in
+                    Text(mode.rawValue).tag(mode)
+                }
+            }.labelsHidden()
+            if editor.canAdjustCrop {
+                Slider(value: $editor.position, in: 0...1) { Text("Crop position") }
+                    .accessibilityLabel("Crop position")
+                Text("Use Fit entire image if the crop cuts off text or barcodes.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 8) {
+                Button("Rotate", systemImage: "rotate.right", action: editor.rotate)
+                Button("Reset", action: editor.resetCrop)
+            }
+        }
+        .disabled(editor.image == nil || editor.isImporting)
     }
 
     private var connectionDescription: String? {

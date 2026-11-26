@@ -64,12 +64,24 @@ final class PrinterConnection: NSObject, ObservableObject {
     private var writableCharacteristics: [PrinterEndpoint: CBCharacteristic] = [:]
 
     private struct Transfer {
-        let job: Data
+        let pages: LabelPrintJob
+        let profile: PrinterProfile
         let writeType: CBCharacteristicWriteType
         let chunkSize: Int
+        var job: Data
+        var pageIndex = 0
         var offset = 0
         var waitingForCapacity = false
-        var token = UUID()
+        let token = UUID()
+
+        var progress: Double {
+            (Double(pageIndex) + Double(offset) / Double(job.count)) / Double(pages.pageCount)
+        }
+    }
+
+    var printProgressTitle: String {
+        guard let transfer, transfer.pages.pageCount > 1 else { return "Sending label…" }
+        return "Sending label \(transfer.pageIndex + 1) of \(transfer.pages.pageCount)…"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -180,9 +192,9 @@ final class PrinterConnection: NSObject, ObservableObject {
         }
     }
 
-    func printLabel(_ label: LabelRaster) {
+    func printLabels(_ labels: LabelPrintJob) {
         guard phase == .ready, transfer == nil, let profile, let target, let endpoint,
-              label.resolution == profile.resolution else { return }
+              labels.resolution == profile.resolution else { return }
         let writeType: CBCharacteristicWriteType = endpoint.properties.contains(.writeWithoutResponse)
             ? .withoutResponse : .withResponse
         // Match the vendor BLE SDK's 100-byte writes and pacing.
@@ -192,8 +204,8 @@ final class PrinterConnection: NSObject, ObservableObject {
             return
         }
         do {
-            let job = try label.printJob(for: profile)
-            transfer = Transfer(job: job, writeType: writeType, chunkSize: chunkSize)
+            let job = try labels.raster(page: 0).printJob(for: profile)
+            transfer = Transfer(pages: labels, profile: profile, writeType: writeType, chunkSize: chunkSize, job: job)
         } catch {
             finishPrint(error: error.localizedDescription)
             return
@@ -207,7 +219,7 @@ final class PrinterConnection: NSObject, ObservableObject {
     private func sendNextChunk() {
         guard let target, let endpoint, var transfer else { return }
         guard transfer.offset < transfer.job.count else {
-            finishPrint()
+            advancePrintJob(transfer)
             return
         }
 
@@ -225,8 +237,34 @@ final class PrinterConnection: NSObject, ObservableObject {
         target.writeValue(chunk, for: endpoint, type: transfer.writeType)
 
         if transfer.writeType == .withoutResponse {
-            progress = Double(end) / Double(transfer.job.count)
+            progress = transfer.progress
             paceNextChunk(token: transfer.token)
+        }
+    }
+
+    private func advancePrintJob(_ completed: Transfer) {
+        let nextPage = completed.pageIndex + 1
+        guard nextPage < completed.pages.pageCount else {
+            finishPrint()
+            return
+        }
+        printTimeout?.cancel()
+        printTimeout = nil
+        let token = completed.token
+        // Give the printer time to feed the 150 mm label before sending the next page.
+        DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(2)) { [weak self] in
+            guard let self, var transfer = self.transfer,
+                  transfer.token == token, transfer.pageIndex + 1 == nextPage else { return }
+            do {
+                transfer.job = try transfer.pages.raster(page: nextPage).printJob(for: transfer.profile)
+                transfer.pageIndex = nextPage
+                transfer.offset = 0
+                self.transfer = transfer
+                self.progress = transfer.progress
+                self.sendNextChunk()
+            } catch {
+                self.finishPrint(error: "Could not prepare label \(nextPage + 1). Check the printed labels before retrying.")
+            }
         }
     }
 
@@ -252,10 +290,13 @@ final class PrinterConnection: NSObject, ObservableObject {
     private func finishPrint(error: String? = nil) {
         printTimeout?.cancel()
         printTimeout = nil
+        let pageCount = transfer?.pages.pageCount ?? 1
         transfer = nil
         progress = nil
         printFailed = error != nil
-        printMessage = error ?? "Bluetooth transfer finished. Check the printer for output."
+        printMessage = error ?? (pageCount == 1
+            ? "Bluetooth transfer finished. Check the printer for output."
+            : "Bluetooth transfer finished for \(pageCount) labels. Check the printer for output.")
     }
 
     private func startSearch(preferSavedPeripheral: Bool) {
@@ -523,7 +564,7 @@ extension PrinterConnection: @preconcurrency CBPeripheralDelegate {
             retryAfterDisconnect()
             return
         }
-        progress = Double(transfer.offset) / Double(transfer.job.count)
+        progress = transfer.progress
         paceNextChunk(token: transfer.token)
     }
 

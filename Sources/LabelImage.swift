@@ -16,7 +16,7 @@ enum LabelImageError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unreadable: "That item does not contain a supported image."
-        case .tooLarge: "Choose an image smaller than 50 MB."
+        case .tooLarge: "Choose a file smaller than 50 MB."
         case .renderFailed: "The label image could not be rendered."
         case .printEncodingFailed: "The label could not be encoded for Bluetooth printing."
         }
@@ -31,11 +31,16 @@ enum LabelImage {
     static let maximumFileBytes = 50 * 1024 * 1024
 
     static func load(file: URL) throws -> CGImage {
+        try decode(fileData(at: file))
+    }
+
+    static func fileData(at file: URL) throws -> Data {
         guard file.isFileURL else { throw LabelImageError.unreadable }
         let resources = try file.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
         guard resources.isRegularFile == true else { throw LabelImageError.unreadable }
         guard (resources.fileSize ?? 0) <= maximumFileBytes else { throw LabelImageError.tooLarge }
-        return try decode(Data(contentsOf: file, options: .mappedIfSafe))
+        // PDF pages can render after import. Own the bytes so edits to the source file cannot change an open job.
+        return try Data(contentsOf: file)
     }
 
     static func decode(_ data: Data) throws -> CGImage {
@@ -108,6 +113,16 @@ enum LabelImage {
     static func render(
         _ image: CGImage, framing: LabelFraming, position: Double, resolution: PrinterResolution = .standard
     ) throws -> LabelRaster {
+        try render(resolution: resolution) { context, bounds in
+            context.interpolationQuality = .high
+            let sourceSize = CGSize(width: image.width, height: image.height)
+            context.draw(image, in: imageRect(size: sourceSize, framing: framing, position: position, bounds: bounds))
+        }
+    }
+
+    static func render(
+        resolution: PrinterResolution, draw: (CGContext, CGRect) -> Void
+    ) throws -> LabelRaster {
         let width = resolution.width
         let height = resolution.height
         let bounds = CGRect(x: 0, y: 0, width: width, height: height)
@@ -119,9 +134,7 @@ enum LabelImage {
 
         context.setFillColor(gray: 1, alpha: 1)
         context.fill(bounds)
-        context.interpolationQuality = .high
-        let sourceSize = CGSize(width: image.width, height: image.height)
-        context.draw(image, in: imageRect(size: sourceSize, framing: framing, position: position, bounds: bounds))
+        draw(context, bounds)
 
         let pixels = raw.bindMemory(to: UInt8.self, capacity: context.bytesPerRow * height)
         let rowBytes = (width + 7) / 8

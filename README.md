@@ -32,9 +32,9 @@ Wi-Fi setup applies to network printing. Direct Bluetooth uses the Bluetooth con
 
 ## Print a label
 
-1. Drop an image onto the preview or press **⌘V** or **Ctrl+V**.
-2. Adjust the crop or select **Fit entire image** if an edge contains text or a barcode. Rotate as needed.
-3. Click **Print Label** for a saved Bluetooth printer, or **System Print…** for a printer added to macOS. **Save PNG…** exports the preview for another printing app.
+1. Drop an image or PDF onto the preview, or choose **Open…**. Paste an image with **⌘V** or **Ctrl+V**.
+2. For an image, adjust the crop or choose **Fit entire image** to keep edge text and barcodes. For a PDF, use the arrows above the preview to inspect each page. Label Printer fits the entire PDF page onto the label.
+3. Click **Print Label** or **Print N Labels** for a saved Bluetooth printer. Each PDF page prints on its own 4 × 6 label in document order. **System Print…** opens the macOS print dialog, and **Save PNG…** exports the page shown in the preview.
 
 ## Build from source
 
