@@ -33,7 +33,7 @@ final class PrinterConnection: NSObject, ObservableObject {
         let id: UUID
         let name: String
 
-        var isNelko: Bool { name.localizedCaseInsensitiveContains("PL70e-BT") }
+        var isNelko: Bool { PrinterProfile.isNelkoModel(name) }
     }
 
     @Published private(set) var phase: Phase = .idle
@@ -167,9 +167,15 @@ final class PrinterConnection: NSObject, ObservableObject {
             finishPrint(error: "The printer could not accept a Bluetooth write.")
             return
         }
+        do {
+            let job = try label.printJob(for: profile)
+            transfer = Transfer(job: job, writeType: writeType, chunkSize: chunkSize)
+        } catch {
+            finishPrint(error: error.localizedDescription)
+            return
+        }
         printMessage = nil
         printFailed = false
-        transfer = Transfer(job: label.printJob(language: profile.language), writeType: writeType, chunkSize: chunkSize)
         progress = 0
         sendNextChunk()
     }
