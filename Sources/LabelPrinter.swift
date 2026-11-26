@@ -14,7 +14,13 @@ struct LabelPrinterApp: App {
                 .background { PasteShortcut(action: editor.paste) }
                 .onAppear {
                     editor.resolution = printer.profile?.resolution ?? .standard
-                    printer.reconnectOnLaunch()
+                    printer.connectIfNeeded()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                    printer.connectIfNeeded()
+                }
+                .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)) { _ in
+                    printer.connectIfNeeded()
                 }
                 .onChange(of: printer.profile?.resolution) { _, resolution in
                     editor.resolution = resolution ?? .standard
@@ -232,7 +238,7 @@ struct LabelPrinterView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 if printer.profile != nil && printer.phase != .ready {
-                    Button(printer.phase.isConnecting ? "Connecting…" : "Connect Printer", action: printer.connect)
+                    Button(printer.phase.isConnecting ? "Connecting…" : "Connect Printer", action: printer.connectIfNeeded)
                         .disabled(printer.phase.isConnecting)
                 }
                 Button(printer.profile == nil ? "Add Bluetooth Printer…" : "Change Bluetooth Printer…") {
@@ -280,7 +286,7 @@ struct LabelPrinterView: View {
 
     private var connectionDescription: String? {
         switch printer.phase {
-        case .idle: printer.profile == nil ? "Use System Print for printers added to your Mac." : "The saved printer reconnects on launch."
+        case .idle: printer.profile == nil ? "Use System Print for printers added to your Mac." : "Label Printer automatically tries to connect to your saved printer."
         case .starting: "Allow Bluetooth access if macOS asks."
         case .offline: "Check that the printer is on, nearby, and available."
         case .denied: "Allow Label Printer in System Settings → Privacy & Security → Bluetooth."

@@ -14,7 +14,7 @@ The [ZIP download](https://github.com/moujiandao/label-printer/releases/latest/d
 
 | Connection | Setup |
 | --- | --- |
-| **Direct Bluetooth LE** | In the app, click **Add Bluetooth Printer…**. Choose your device, then select the documented Bluetooth write endpoint, **TSPL** or **ZPL**, and the printer resolution. The Nelko PL70e-BT preset fills in the endpoint and language when it finds them. **Save Printer** remembers the device for the next launch. |
+| **Direct Bluetooth LE** | In the app, click **Add Bluetooth Printer…**. Choose your device, then select the documented Bluetooth write endpoint, **TSPL** or **ZPL**, and the printer resolution. The Nelko PL70e-BT preset fills in the endpoint and language when it finds them. **Save Printer** remembers the device. Label Printer retries the connection when you open or return to the app, or when your Mac wakes. |
 | **Wi-Fi, USB, or driver-backed Bluetooth** | Add the printer in **System Settings → Printers & Scanners**. In the app, click **System Print…**, choose your printer, and set its paper size to **100 × 150 mm** or the equivalent **4 × 6** preset. |
 
 Direct Bluetooth requires a printer that accepts TSPL or ZPL through a writable Bluetooth LE characteristic. TSPL jobs use gap-sensed stock with a 2 mm gap. Turn on Bluetooth on your Mac, power on the printer nearby, and allow access when macOS asks. If your model uses a proprietary protocol or Bluetooth Classic, check whether its vendor offers a macOS driver and use **System Print…** if the printer appears there.

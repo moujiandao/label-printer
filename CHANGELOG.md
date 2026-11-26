@@ -1,5 +1,11 @@
 # Changelog
 
+## [2026-11-26]
+
+### Changed
+
+- Retry the saved Bluetooth printer when opening or returning to Label Printer and when the Mac wakes.
+
 ## [2026-11-25]
 
 ### Added

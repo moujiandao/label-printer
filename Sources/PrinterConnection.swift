@@ -27,6 +27,10 @@ final class PrinterConnection: NSObject, ObservableObject {
         var isConnecting: Bool {
             self == .starting || self == .searching || self == .connecting || self == .discovering
         }
+
+        func shouldAttemptConnection(hasConnectedEndpoint: Bool) -> Bool {
+            !isConnecting && (self != .ready || !hasConnectedEndpoint)
+        }
     }
 
     struct NearbyPrinter: Identifiable {
@@ -73,13 +77,11 @@ final class PrinterConnection: NSObject, ObservableObject {
         super.init()
     }
 
-    func reconnectOnLaunch() {
-        guard profile != nil, central == nil else { return }
-        startBluetooth()
-    }
-
-    func connect() {
-        guard profile != nil, !isSettingUp, phase != .ready, !phase.isConnecting else { return }
+    func connectIfNeeded() {
+        guard profile != nil, !isSettingUp, transfer == nil,
+              phase.shouldAttemptConnection(hasConnectedEndpoint: target?.state == .connected && endpoint != nil)
+        else { return }
+        if phase == .ready { disconnect() }
         startBluetooth()
     }
 
@@ -235,9 +237,8 @@ final class PrinterConnection: NSObject, ObservableObject {
     }
 
     private func startSearch(preferSavedPeripheral: Bool) {
-        guard let central, central.state == .poweredOn else { return }
+        guard let central, central.state == .poweredOn, target == nil else { return }
         schedule?.cancel()
-        guard target == nil else { return }
 
         if !isSettingUp, profile == nil { return }
         if !isSettingUp, preferSavedPeripheral, let profile,

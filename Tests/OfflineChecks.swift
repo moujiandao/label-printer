@@ -6,6 +6,7 @@ import zlib
 struct OfflineChecks {
     @MainActor
     static func main() async throws {
+        try verifyReconnectEligibility()
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -101,6 +102,23 @@ struct OfflineChecks {
         try await waitForImport(editor)
         try require(editor.errorMessage != nil && editor.raster == nil, "Failed replacement clears the old printable label")
         print("Offline image, clipboard, drop, crop, PNG, TSPL, Nelko Bluetooth, ZPL and printer preference checks passed.")
+    }
+
+    static func verifyReconnectEligibility() throws {
+        for phase in [PrinterConnection.Phase.idle, .offline] {
+            try require(phase.shouldAttemptConnection(hasConnectedEndpoint: false), "A session can connect when idle or offline")
+        }
+        for phase in [PrinterConnection.Phase.starting, .searching, .connecting, .discovering] {
+            try require(!phase.shouldAttemptConnection(hasConnectedEndpoint: false), "A session keeps the current connection attempt")
+        }
+        try require(
+            !PrinterConnection.Phase.ready.shouldAttemptConnection(hasConnectedEndpoint: true),
+            "A session keeps the connected printer"
+        )
+        try require(
+            PrinterConnection.Phase.ready.shouldAttemptConnection(hasConnectedEndpoint: false),
+            "A session retries when the app still shows a printer whose connection is gone"
+        )
     }
 
     @MainActor
