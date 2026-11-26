@@ -4,10 +4,11 @@ Paste or drop an image, preview it on a 4 × 6 label, and print from your Mac. L
 
 ## Install
 
-1. Download [Label-Printer-macOS.zip](https://github.com/moujiandao/label-printer/releases/latest/download/Label-Printer-macOS.zip).
-2. Unzip it, move **Label Printer.app** to Applications, and open it.
+1. Download [Label-Printer-macOS.dmg](https://github.com/moujiandao/label-printer/releases/latest/download/Label-Printer-macOS.dmg) and open it.
+2. Drag **Label Printer** onto the **Applications** shortcut in the window.
+3. Open **Label Printer** from Applications. To pin it to the Dock, Control-click its Dock icon and choose **Options → Keep in Dock**.
 
-If there’s no release ZIP or macOS blocks a build that hasn’t been notarized, use the source build below.
+The [ZIP download](https://github.com/moujiandao/label-printer/releases/latest/download/Label-Printer-macOS.zip) is also available. If macOS blocks the locally signed download, use the source build below.
 
 ## Choose your printer
 
@@ -42,7 +43,13 @@ bash build.sh
 open "build/Label Printer.app"
 ```
 
-Run `bash test.sh` for offline tests. To package a GitHub release, run `ditto -c -k --sequesterRsrc --keepParent "build/Label Printer.app" "build/Label-Printer-macOS.zip"` and attach the resulting ZIP as a release asset. The source build uses local signing. Public downloads can be signed with Developer ID and notarized before publishing. [Apple’s app signing and notarization guidance](https://support.apple.com/en-us/102445)
+Run `bash test.sh` for offline tests.
+
+### Build the installer
+
+After building the app, run `bash package.sh`. It creates `build/Label-Printer-macOS.dmg` with the app and an Applications shortcut. Attach the disk image to the GitHub release. To package an existing app bundle, pass its path as the first argument.
+
+The source build uses local signing. For a notarized public download, use a Developer ID-signed app and follow [Apple’s distribution guidance](https://developer.apple.com/documentation/xcode/packaging-mac-software-for-distribution).
 
 ## Privacy and license
 
